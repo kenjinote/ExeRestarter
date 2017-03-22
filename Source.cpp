@@ -35,6 +35,10 @@ BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam)
 							ShellExecute(NULL, TEXT("open"), szModuleFilePath, NULL, NULL, SW_SHOW);
 						}
 					}
+					else
+					{
+						dwHangCount = 0;
+					}
 					CloseHandle(hHandle);
 					return FALSE;
 				}
