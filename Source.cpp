@@ -8,52 +8,14 @@
 #include <psapi.h>
 
 TCHAR szClassName[] = TEXT("Window");
-HWND hList;
-DWORD dwHangCount;
-
-BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam)
-{
-	DWORD dwProcessID = 0;
-	GetWindowThreadProcessId(hWnd, &dwProcessID);
-	if (dwProcessID)
-	{
-		HANDLE hHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessID);
-		if (hHandle)
-		{
-			TCHAR szModuleFilePath[MAX_PATH];
-			if (GetModuleFileNameEx(hHandle, NULL, szModuleFilePath, MAX_PATH))
-			{
-				SendMessage(hList, LB_ADDSTRING, 0, (LPARAM)szModuleFilePath);
-				if (StrStrI(PathFindFileName(szModuleFilePath), (LPCTSTR)lParam))
-				{
-					if (IsHungAppWindow(hWnd))
-					{
-						++dwHangCount;
-						if (dwHangCount >= 5)
-						{
-							TerminateProcess(hHandle, 0);
-							ShellExecute(NULL, TEXT("open"), szModuleFilePath, NULL, NULL, SW_SHOW);
-						}
-					}
-					else
-					{
-						dwHangCount = 0;
-					}
-					CloseHandle(hHandle);
-					return FALSE;
-				}
-			}
-			CloseHandle(hHandle);
-		}
-	}
-	return TRUE;
-}
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND hButton1;
 	static HWND hButton2;
 	static HWND hEdit;
+	static HWND hList;
+	static DWORD dwHangCount;
 	switch (msg)
 	{
 	case WM_CREATE:
@@ -69,15 +31,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		MoveWindow(hList, 10, 50, LOWORD(lParam) - 20, HIWORD(lParam) - 60, 1);
 		break;
 	case WM_TIMER:
-	{
-		TCHAR szModuleFilePath[MAX_PATH];
-		if (GetWindowText(hEdit, szModuleFilePath, MAX_PATH))
 		{
 			SendMessage(hList, LB_RESETCONTENT, 0, 0);
-			EnumWindows(EnumWindowsProc, (LPARAM)szModuleFilePath);
+
+			TCHAR szInputFilePath[MAX_PATH];
+			GetWindowText(hEdit, szInputFilePath, MAX_PATH);
+
+			DWORD dwSize;
+			DWORD ProcessID[4096];
+
+			EnumProcesses(ProcessID, sizeof(ProcessID), &dwSize);
+			DWORD dwMax = (dwSize / sizeof(DWORD));
+			for (DWORD dwNow = 0; dwNow < dwMax; dwNow++)
+			{
+				HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ProcessID[dwNow]);
+				if (hProcess)
+				{
+					TCHAR szModuleFilePath[MAX_PATH];
+					if (GetModuleFileNameEx(hProcess, 0, szModuleFilePath, _countof(szModuleFilePath)))
+					{
+						SendMessage(hList, LB_ADDSTRING, 0, (LPARAM)szModuleFilePath);
+						if (StrStrI(PathFindFileName(szModuleFilePath), szInputFilePath))
+						{
+							if (IsHungAppWindow(hWnd))
+							{
+								++dwHangCount;
+								if (dwHangCount >= 5)
+								{
+									TerminateProcess(hProcess, 0);
+									ShellExecute(NULL, TEXT("open"), szModuleFilePath, NULL, NULL, SW_SHOW);
+								}
+							}
+							else
+							{
+								dwHangCount = 0;
+							}
+							CloseHandle(hProcess);
+							return FALSE;
+						}
+					}
+					CloseHandle(hProcess);
+				}
+			}
 		}
-	}
-	break;
+		break;
 	case WM_COMMAND:
 		if (LOWORD(wParam) == 100)
 		{
